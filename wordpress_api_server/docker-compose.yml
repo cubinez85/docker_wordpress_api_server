@@ -1,0 +1,87 @@
+services:
+  # PostgreSQL база данных
+  postgres:
+    image: postgres:15-alpine
+    container_name: leads-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRESQL_DB}
+      POSTGRES_USER: ${POSTGRESQL_USER}      # Исправлено: POSTGRES_USER вместо POSTGRESQL_USER
+      POSTGRES_PASSWORD: ${POSTGRESQL_PASSWORD}  # Исправлено: POSTGRES_PASSWORD вместо POSTGRESQL_PASSWORD
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./app/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - leads-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRESQL_USER} -d ${POSTGRESQL_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Flask API (Gunicorn)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: leads-api
+    restart: always
+    user: "1000:1000"  # Добавьте эту строку
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/var/log/wordpress
+      - ./.env:/app/.env:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - leads-network
+    ports:
+      - "127.0.0.1:8089:8089"
+    command: >
+      gunicorn
+        --workers 3
+        --bind 0.0.0.0:8089
+        --timeout 120
+        --access-logfile /var/log/wordpress/gunicorn-access.log
+        --error-logfile /var/log/wordpress/gunicorn-error.log
+        wsgi:app
+
+  # Background Worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: leads-worker
+    restart: always
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FRONTEND_URL=${FRONTEND_URL:-https://wordpress.cubinez.ru}
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/var/log/wordpress
+      - ./.env:/app/.env:ro
+      - ./sa-key.json:/app/sa-key.json:ro
+      - worker_state:/app/state
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - leads-network
+    command: python main.py
+
+networks:
+  leads-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  worker_state:
+    driver: local
