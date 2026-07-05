@@ -1,0 +1,13 @@
+.git
+.gitignore
+.dockerignore
+.vscode/
+.idea/
+*.md
+*.log
+logs/
+.env
+ssl/
+*.pem
+*.key
+*.crt
