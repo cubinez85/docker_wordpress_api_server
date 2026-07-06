@@ -51,6 +51,16 @@ docker compose exec api bash
 docker compose exec worker bash
 docker compose exec postgres psql -U leads_user -d leads_db
 
+Создание админа
+docker exec -it leads-worker python3 -c " from passlib.context import CryptContext import psycopg2, os pwd = CryptContext(schemes=['argon2']) conn = psycopg2.connect(host='postgres', database=os.getenv('POSTGRESQL_DB'), user=os.getenv('POSTGRESQL_USER'), password=os.getenv('POSTGRESQL_PASSWORD')) cur = conn.cursor() cur.execute('INSERT INTO users (email, password_hash, is_admin) VALUES (%s, %s, TRUE) ON CONFLICT (email) DO UPDATE SET is_admin=TRUE', ('cubinez85@cubinez.ru', pwd.hash('ВашНадежныйПароль123'))) conn.commit(); print('Admin created/updated') "
+
+создание админа(вариант)
+Проверьте, существует ли пользователь: docker exec -it wordpress-postgres psql -U leads_user -d leads_db -c "SELECT id, email, is_admin, is_active FROM users WHERE email = 'cubinez85@cubinez.ru';"
+
+Если пользователь есть, но не админ docker exec -it wordpress-postgres psql -U leads_user -d leads_db -c "UPDATE users SET is_admin = TRUE WHERE email = 'cubinez85@cubinez.ru';"
+
+Проверьте: docker exec -it wordpress-postgres psql -U leads_user -d leads_db -c "SELECT id, email, is_admin FROM users WHERE email = 'cubinez85@cubinez.ru';"
+
 # Резервное копирование (обязательно!)
 sudo nano /usr/local/bin/wp-backup.sh
 
