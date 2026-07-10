@@ -2028,3 +2028,108 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 </script>
+
+#Добавьте в конец functions.php:
+/**
+ * Защита страниц: редирект неавторизованных пользователей на /login
+ */
+add_action('wp_head', 'custom_auth_redirect_script', 1);
+function custom_auth_redirect_script() {
+    // Не добавляем скрипт в админку WordPress
+    if (is_admin()) {
+        return;
+    }
+    
+    ?>
+    <script>
+    (function() {
+        'use strict';
+        
+        // Страницы, которые НЕ требуют авторизации
+        const PUBLIC_PAGES = [
+            '/login',
+            '/login/',
+            '/register',
+            '/register/',
+            '/forgot-password',
+            '/forgot-password/',
+            '/reset-password',
+            '/reset-password/',
+            '/change-password-first',
+            '/change-password-first/',
+            '/wp-login.php',
+            '/wp-admin/',
+            '/wp-admin'
+        ];
+        
+        // Получаем текущий путь
+        const currentPath = window.location.pathname;
+        
+        // Проверяем, является ли текущая страница публичной
+        const isPublicPage = PUBLIC_PAGES.some(page => currentPath === page || currentPath.startsWith('/wp-'));
+        
+        // Если это публичная страница — не делаем редирект
+        if (isPublicPage) {
+            return;
+        }
+        
+        // Проверяем наличие токена в localStorage
+        const token = localStorage.getItem('token');
+        const userStr = localStorage.getItem('user');
+        
+        if (!token || !userStr) {
+            // Нет токена — редирект на /login
+            console.log('[AUTH] Нет токена, редирект на /login');
+            window.location.href = '/login/?redirect=' + encodeURIComponent(currentPath);
+            return;
+        }
+        
+        // Проверяем валидность токена через API
+        fetch('https://wordpress.cubinez.ru/api/me', {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (response.status === 401) {
+                // Токен невалиден — очищаем и редиректим
+                console.log('[AUTH] Токен невалиден, редирект на /login');
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                window.location.href = '/login/?redirect=' + encodeURIComponent(currentPath);
+                return null;
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (!data || !data.user) return;
+            
+            // Обновляем данные пользователя
+            localStorage.setItem('user', JSON.stringify(data.user));
+            
+            // Если нужно сменить пароль — редирект на change-password-first
+            if (data.user.must_change_password === true) {
+                if (!currentPath.includes('change-password-first')) {
+                    window.location.href = '/change-password-first';
+                }
+                return;
+            }
+            
+            // Если аккаунт заблокирован — выходим
+            if (data.user.is_active === false) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                window.location.href = '/login/?error=blocked';
+                return;
+            }
+        })
+        .catch(error => {
+            console.error('[AUTH] Ошибка проверки токена:', error);
+            // При ошибке сети — не редиректим, даём пользователю шанс
+        });
+    })();
+    </script>
+    <?php
+}
