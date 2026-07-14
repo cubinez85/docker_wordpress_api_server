@@ -98,6 +98,35 @@ sudo crontab -e
 
 0 3 * * * /usr/local/bin/wp-backup.sh >> /var/log/wp-backup.log 2>&1
 
+# Установка wordpress через локальный бекап:
+cd ~/docker_wordpress_api_server/wordpress
+
+# 1. Проверяем пароль MySQL
+docker exec $(docker compose ps -q db) env | grep MYSQL_ROOT_PASSWORD
+
+# 2. Создаем чистую БД
+docker exec $(docker compose ps -q db) mariadb -u root -p"*********" -e "DROP DATABASE IF EXISTS wordpress; CREATE DATABASE wordpress;"
+
+# 3. Восстанавливаем БД из нового бэкапа
+gunzip -c ~/docker_wordpress_api_server/wordpress-backups/db_20260714_102101.sql.gz | \
+docker exec -i $(docker compose ps -q db) mariadb -u root -p"v7aBr7kI-d" wordpress
+
+# 4. Проверяем, что таблицы появились
+docker exec $(docker compose ps -q db) mariadb -u root -p"******" -e "SHOW TABLES FROM wordpress;"
+
+# 5. Проверяем количество таблиц
+docker exec $(docker compose ps -q db) mariadb -u root -p"*******" -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='wordpress';"
+
+# 1. Восстанавливаем файлы из архива
+docker run --rm \
+  -v wordpress_wp_data:/data \
+  -v ~/docker_wordpress_api_server/wordpress-backups:/backup \
+  alpine \
+  tar xzf /backup/files_20260714_102101.tar.gz -C /data
+
+# 2. Проверяем, что файлы восстановились
+docker run --rm -v wordpress_wp_data:/data alpine ls -la /data
+
 # установить доверенный cert
 sudo mkdir /etc/nginx/ssl/
 
