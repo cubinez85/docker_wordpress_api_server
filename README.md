@@ -65,16 +65,19 @@ docker exec -it leads-worker python3 -c " from passlib.context import CryptConte
 sudo nano /usr/local/bin/wp-backup.sh
 
 #!/bin/bash
-BACKUP_DIR="/home/cubinez85/wordpress-backups"
+BACKUP_DIR="/home/cubinez85/docker_wordpress_api_server/wordpress-backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 mkdir -p $BACKUP_DIR
 
-cd /home/cubinez85/wordpress/
+cd /home/cubinez85/docker_wordpress_api_server/wordpress
+
+# Получаем пароль из переменных окружения
+MYSQL_PASSWORD=$(docker exec $(docker compose ps -q db) env | grep MYSQL_ROOT_PASSWORD | cut -d= -f2)
 
 # Бэкап базы данных
-docker compose exec -T db mariadb-dump -u root -p"${MYSQL_ROOT_PASSWORD}" wordpress | gzip > $BACKUP_DIR/db_$DATE.sql.gz
+docker exec $(docker compose ps -q db) mariadb-dump -u root -p"${MYSQL_PASSWORD}" --all-databases | gzip > $BACKUP_DIR/db_$DATE.sql.gz
 
-# Бэкап файлов WordPress (медиа, плагины, темы)
+# Бэкап файлов WordPress
 docker run --rm -v wordpress_wp_data:/data -v $BACKUP_DIR:/backup alpine \
   tar czf /backup/files_$DATE.tar.gz -C /data .
 
